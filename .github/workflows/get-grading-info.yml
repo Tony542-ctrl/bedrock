@@ -1,0 +1,65 @@
+name: "Retrieve Grading Info"
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/get-grading-info.yml'
+
+jobs:
+  retrieve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: us-east-1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: terraform
+
+      - name: Update grading.json
+        run: |
+          terraform output -json > ../grading.json
+        working-directory: terraform
+
+      - name: Commit grading.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add grading.json
+          git commit -m "chore: update grading.json for submission" || echo "No changes to commit"
+          git push
+
+      - name: Fetch dev-view credentials
+        run: |
+          echo "================================================="
+          echo "BEDROCK-DEV-VIEW CREDENTIALS"
+          echo "================================================="
+          echo "Access Key ID: $(terraform output -raw dev_view_access_key_id)"
+          echo "Secret Access Key: $(terraform output -raw dev_view_secret_access_key)"
+          echo "Console Password: $(terraform output -raw dev_view_console_password)"
+          echo "================================================="
+        working-directory: terraform
+
+      - name: Fetch ALB Ingress URL
+        run: |
+          aws eks update-kubeconfig --name project-bedrock-cluster --region us-east-1
+          echo "================================================="
+          echo "STORE URL (ALB INGRESS)"
+          echo "================================================="
+          kubectl get ingress -n retail-app
+          echo "================================================="
