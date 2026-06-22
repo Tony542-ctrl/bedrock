@@ -1,0 +1,152 @@
+name: "Terraform CI/CD"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  terraform:
+    name: "Terraform"
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: us-east-1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+          terraform_wrapper: false
+
+      - name: Create Terraform State Bucket
+        run: |
+          aws s3api head-bucket --bucket project-bedrock-tf-state-tony542 2>/dev/null || aws s3api create-bucket --bucket project-bedrock-tf-state-tony542 --region us-east-1
+
+      - name: Terraform Init
+        id: init
+        run: terraform init
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check
+        continue-on-error: true
+
+      - name: Terraform Plan
+        id: plan
+        if: github.event_name == 'pull_request'
+        run: terraform plan -no-color
+        continue-on-error: true
+
+      - name: Update PR with Terraform Plan
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`\n
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+      - name: Terraform Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve
+
+      - name: Configure kubectl
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          aws eks update-kubeconfig --name project-bedrock-cluster --region us-east-1
+
+      - name: Install AWS Load Balancer Controller
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          # Fetch the IRSA role ARN from Terraform output
+          ALB_ROLE_ARN=$(terraform output -raw alb_controller_role_arn)
+
+          # Add the EKS Helm repo
+          helm repo add eks https://aws.github.io/eks-charts
+          helm repo update
+
+          # Install or upgrade the AWS Load Balancer Controller
+          helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
+            --namespace kube-system \
+            --set clusterName=project-bedrock-cluster \
+            --set serviceAccount.create=true \
+            --set serviceAccount.name=aws-load-balancer-controller \
+            --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$ALB_ROLE_ARN" \
+            --set region=us-east-1 \
+            --set vpcId=$(terraform output -raw vpc_id)
+
+          # Wait for the controller to be ready
+          kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=120s
+
+      - name: Prepare Helm Values
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          # Fetch RDS Endpoints
+          export CATALOG_DB_ENDPOINT=$(terraform output -raw catalog_db_endpoint || echo "")
+          export ORDERS_DB_ENDPOINT=$(terraform output -raw orders_db_endpoint || echo "")
+
+          # Fetch DB passwords (sensitive — from Terraform state, never logged)
+          export CATALOG_DB_PASSWORD=$(terraform output -raw catalog_db_password)
+          export ORDERS_DB_PASSWORD=$(terraform output -raw orders_db_password)
+
+          # Fetch IRSA role ARN for carts DynamoDB access
+          export CARTS_IRSA_ROLE_ARN=$(terraform output -raw carts_irsa_role_arn)
+
+          # Replace all placeholders in helm values template
+          envsubst < ../helm/custom-values.yaml.tpl > ../helm/custom-values.yaml
+
+      - name: Deploy application via Helm
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          helm upgrade --install retail-store oci://public.ecr.aws/aws-containers/retail-store-sample-chart \
+            --namespace retail-app --create-namespace \
+            -f ../helm/custom-values.yaml
+
+          # Force UI to restart so it picks up the updated ConfigMap endpoints
+          kubectl rollout restart deployment retail-store-ui -n retail-app || true
+
+      - name: Apply ALB Ingress
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          kubectl apply -f ../k8s/ingress.yaml
+
+          # Show the Ingress status (ALB may take a minute to provision)
+          echo "Waiting for ALB to provision..."
+          sleep 15
+          kubectl get ingress -n retail-app
