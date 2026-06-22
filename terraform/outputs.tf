@@ -49,3 +49,23 @@ output "carts_irsa_role_arn" {
   description = "IAM role ARN for the carts DynamoDB service account"
   value       = aws_iam_role.carts_dynamodb.arn
 }
+
+# --- bedrock-dev-view credentials (for grading submission) ---
+
+output "dev_view_access_key_id" {
+  description = "Access Key ID for bedrock-dev-view IAM user"
+  value       = aws_iam_access_key.dev_view.id
+  sensitive   = true
+}
+
+output "dev_view_secret_access_key" {
+  description = "Secret Access Key for bedrock-dev-view IAM user"
+  value       = aws_iam_access_key.dev_view.secret
+  sensitive   = true
+}
+
+output "dev_view_console_password" {
+  description = "Console login password for bedrock-dev-view IAM user"
+  value       = aws_iam_user_login_profile.dev_view.password
+  sensitive   = true
+}
