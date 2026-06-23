@@ -1,10 +1,11 @@
 {
-  "cluster_endpoint": "https://6D874EAEBBE513551600FE99F6002CFC.gr7.us-east-1.eks.amazonaws.com",
-  "cluster_name": "project-bedrock-cluster",
-  "region": "us-east-1",
-  "vpc_id": "vpc-05473b4d3b062b1b9",
-  "assets_bucket_name": "bedrock-assets-alt-soe-025-5721",
-  "catalog_db_endpoint": "bedrock-catalog-db.cs76u0ceiy4b.us-east-1.rds.amazonaws.com:3306",
-  "orders_db_endpoint": "bedrock-orders-db.cs76u0ceiy4b.us-east-1.rds.amazonaws.com:5432",
-  "frontend_url": "http://a34abdd923a4d40bea8eae7c7c470e7d-317964416.us-east-1.elb.amazonaws.com"
+  "cluster_endpoint": { "value": "https://6D874EAEBBE513551600FE99F6002CFC.gr7.us-east-1.eks.amazonaws.com" },
+  "cluster_name": { "value": "project-bedrock-cluster" },
+  "region": { "value": "us-east-1" },
+  "vpc_id": { "value": "vpc-05473b4d3b062b1b9" },
+  "assets_bucket_name": { "value": "bedrock-assets-alt-soe-025-5721" },
+  "catalog_db_endpoint": { "value": "bedrock-catalog-db.cs76u0ceiy4b.us-east-1.rds.amazonaws.com:3306" },
+  "orders_db_endpoint": { "value": "bedrock-orders-db.cs76u0ceiy4b.us-east-1.rds.amazonaws.com:5432" },
+  "alb_controller_role_arn": { "value": "arn:aws:iam::565471247417:role/aws-load-balancer-controller" },
+  "carts_irsa_role_arn": { "value": "arn:aws:iam::565471247417:role/bedrock-carts-dynamodb" }
 }
