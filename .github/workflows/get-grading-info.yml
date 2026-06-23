@@ -59,11 +59,33 @@ jobs:
           kubectl get svc -n retail-app
           echo "================================================="
 
-      - name: Update and push grading.json
+      - name: Build safe grading.json (no secrets)
+        working-directory: terraform
         run: |
-          cd terraform
-          terraform output -json > ../grading.json
-          cd ..
+          # Build grading.json with only non-sensitive outputs
+          # This avoids GitHub Push Protection blocking the commit
+          cat > ../grading.json << 'JSONEOF'
+          {
+          JSONEOF
+
+          # Extract each non-sensitive output individually
+          echo "  \"cluster_endpoint\": { \"value\": \"$(terraform output -raw cluster_endpoint)\" }," >> ../grading.json
+          echo "  \"cluster_name\": { \"value\": \"$(terraform output -raw cluster_name)\" }," >> ../grading.json
+          echo "  \"region\": { \"value\": \"$(terraform output -raw region)\" }," >> ../grading.json
+          echo "  \"vpc_id\": { \"value\": \"$(terraform output -raw vpc_id)\" }," >> ../grading.json
+          echo "  \"assets_bucket_name\": { \"value\": \"$(terraform output -raw assets_bucket_name)\" }," >> ../grading.json
+          echo "  \"catalog_db_endpoint\": { \"value\": \"$(terraform output -raw catalog_db_endpoint)\" }," >> ../grading.json
+          echo "  \"orders_db_endpoint\": { \"value\": \"$(terraform output -raw orders_db_endpoint)\" }," >> ../grading.json
+          echo "  \"alb_controller_role_arn\": { \"value\": \"$(terraform output -raw alb_controller_role_arn)\" }," >> ../grading.json
+          echo "  \"carts_irsa_role_arn\": { \"value\": \"$(terraform output -raw carts_irsa_role_arn)\" }" >> ../grading.json
+
+          echo "}" >> ../grading.json
+
+          echo "=== grading.json contents ==="
+          cat ../grading.json
+
+      - name: Commit and push grading.json
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add grading.json
