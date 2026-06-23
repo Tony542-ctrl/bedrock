@@ -17,6 +17,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: true
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -56,15 +59,17 @@ jobs:
           kubectl get svc -n retail-app
           echo "================================================="
 
-      - name: Update grading.json
+      - name: Update and push grading.json
         run: |
+          cd terraform
           terraform output -json > ../grading.json
-        working-directory: terraform
-
-      - name: Commit and push grading.json
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git pull --rebase origin main || true
+          cd ..
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add grading.json
-          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "chore: update grading.json for submission" && git push)
+          if git diff --cached --quiet; then
+            echo "grading.json unchanged, skipping commit"
+          else
+            git commit -m "chore: update grading.json for submission"
+            git push
+          fi
