@@ -2,9 +2,6 @@ name: "Retrieve Grading Info"
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - '.github/workflows/get-grading-info.yml'
 
 jobs:
   retrieve:
@@ -31,19 +28,6 @@ jobs:
         run: terraform init
         working-directory: terraform
 
-      - name: Update grading.json
-        run: |
-          terraform output -json > ../grading.json
-        working-directory: terraform
-
-      - name: Commit grading.json
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add grading.json
-          git commit -m "chore: update grading.json for submission" || echo "No changes to commit"
-          git push
-
       - name: Fetch dev-view credentials
         run: |
           echo "================================================="
@@ -63,3 +47,24 @@ jobs:
           echo "================================================="
           kubectl get ingress -n retail-app
           echo "================================================="
+          echo ""
+          echo "ALL PODS STATUS:"
+          kubectl get pods -n retail-app
+          echo "================================================="
+          echo ""
+          echo "ALL SERVICES:"
+          kubectl get svc -n retail-app
+          echo "================================================="
+
+      - name: Update grading.json
+        run: |
+          terraform output -json > ../grading.json
+        working-directory: terraform
+
+      - name: Commit and push grading.json
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main || true
+          git add grading.json
+          git diff --cached --quiet && echo "No changes to commit" || (git commit -m "chore: update grading.json for submission" && git push)
